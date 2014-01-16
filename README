@@ -1,0 +1,25 @@
+This is a mirror of http://www.vim.org/scripts/script.php?script_id=4834
+
+vimcaps
+Never be bothered by caps lock.
+
+As is known, capslock is almost useless in vim&#039s normal mode. If it happens that the capslock is locked, you know what the fuck is going to happen:
+
++ You want to move up, but came out a man;
++ You wanna move down, but line joins;
++ You try to undo those joins, but it undo itself;
++ ...
+
+So, lots of vimmers disabled the capslock or map it to another key. Yes, that is a beautiful solution. I don&#039t like capslock too. But someday, I notice that the capslock is still useful, ---if you have to use an on screen keyboard (e.g., with a touch screen) Then I decide to do a simple thing instead of remap the keyboard: Toggle off the capslock when back to normal mode, ---that is what this plugin do.
+
+vimcaps now only support Windows, Linux support will be added later. Since I don&#039t have a mac, there won&#039t be any mac support until someone send a pull request. :)
+
+Usage:
+After install, this plugin will automatically handle the capslock for you: vimcaps register autocmd for toggle off the capslock when InsertLeave, BufferWinEnter and FocusGained. Note that FocusGained may don't work if you are under a terminal.
+
+Starting from 0.0.3, vimcaps provide a function vimcaps#statusline() in order to display the keyboard locks status on the statusline. You'll need to add it to your statusline settings to enable it.
+
+set stl=...%{vimcaps#statusline(N)}...
+
+More information can be obtained from the source, or check out:
+https://github.com/suxpert/vimcaps
