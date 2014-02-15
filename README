@@ -12,7 +12,9 @@ As is known, capslock is almost useless in vim&#039s normal mode. If it happens 
 
 So, lots of vimmers disabled the capslock or map it to another key. Yes, that is a beautiful solution. I don&#039t like capslock too. But someday, I notice that the capslock is still useful, ---if you have to use an on screen keyboard (e.g., with a touch screen) Then I decide to do a simple thing instead of remap the keyboard: Toggle off the capslock when back to normal mode, ---that is what this plugin do.
 
-vimcaps now only support Windows, Linux support will be added later. Since I don&#039t have a mac, there won&#039t be any mac support until someone send a pull request. :)
+vimcaps now support Windows and Linux (actually xWindow, we need Xlib), TTYs are still not supported. BSD hasn't been tested, suggestions are welcomed. Since I don't have a mac, there won't be any mac support until someone send a pull request. :)
+
+Linux support may have some bug (Although according to my test, only with such a strange way can vimcaps work. I'm using ubuntu 13.10 and a logitech small keyboard and onboard BTW). What we need to know is that, xWindow have a shift lock modifier. I don't know if such a lock exists on a physical keyboard or not, but Xlib functions can't change onboard's shift lock. So this shift lock is still a problem.
 
 Usage:
 After install, this plugin will automatically handle the capslock for you: vimcaps register autocmd for toggle off the capslock when InsertLeave, BufferWinEnter and FocusGained. Note that FocusGained may don't work if you are under a terminal.

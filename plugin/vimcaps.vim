@@ -2,14 +2,17 @@
 " Script Title: vimcaps: never be bothered by the capslock again.
 " Description:  Toggle off capslock when back to normal mode or gain focus,
 "               as well as a "complete control" over the keyboard event.
-"               (The 0.0.x version is windows only)
+"               (The 0.0.x version is windows only, complete control is
+"               windows only too.)
 " Author:       LiTuX <suxpert AT gmail DOT com>
-" Last Change:  2014-01-25 19:05:45
-" Version:      0.0.3
+" Last Change:  2014-02-15 20:52:29
+" Version:      0.1.0
 "
 " Install:      unpack all into your plugin folder, that's all.
 "               If you are using "vundle" or "vim-addons-manager",
 "               see README at "https://github.com/suxpert/vimcaps".
+"               For linux user, you'll need gcc and Xlib to compile
+"               the library (manually or let vimcaps do it)
 "
 " Usage:        No further configuration is needed to use this plugin,
 "               it will automatically handle your capslock:
@@ -45,6 +48,7 @@
 "               Of course you can interrupt it by "Ctrl-C". Have fun!
 "
 " Changes:
+"       0.1.0:  Add xWindow support, now vimcaps works on linux (under X).
 "       0.0.3:  Add "vimcaps#statusline()" function for showing the
 "               keyboard lock status in statusline.
 "       0.0.2:  Optimize functions, add "vimcaps#dance()" for fun.
@@ -57,19 +61,22 @@ if exists("g:vimcaps_loaded")
 endif
 let g:vimcaps_loaded = 1
 
+let s:vimcaps_undertty = 0
+
 let s:vimcaps_path = expand("<sfile>:p:h")
 let s:vimcaps_libname = "keyboard"
+let s:vimcaps_src = s:vimcaps_path."/".s:vimcaps_libname.".c"
 if has("win32")
     let s:vimcaps_lib = s:vimcaps_path."\\".s:vimcaps_libname."-x86.dll"
 elseif has("win64")
     let s:vimcaps_lib = s:vimcaps_path."\\".s:vimcaps_libname."-x64.dll"
 elseif has("win32unix")
     " win32unix can be x86 (msys1, msys2/x86) or x64 (msys2/x64)...
-    " Since I have no better way to determine which plantform we are in,
+    " Since I have no better way to determine which platform we are in,
     " We'll use try blocks for that.
     try
         let s:vimcaps_lib = s:vimcaps_path."/".s:vimcaps_libname."-x86.dll"
-        silent call libcallnr(s:vimcaps_lib, "LockToggled", 1)
+        silent call libcallnr(s:vimcaps_lib, "LibReady", 0)
     catch                   " /^Vim\%((\a\+)\)\=:E364/
         let s:vimcaps_lib = s:vimcaps_path."/".s:vimcaps_libname."-x64.dll"
     endtry
@@ -78,8 +85,10 @@ elseif has("mac") || has("macunix")
     finish
 elseif has("unix")
     " Linux support is under testing.
-    " let s:vimcaps_lib = s:vimcaps_path.s:vimcaps_libname.".so"
-    finish
+    let s:vimcaps_lib = s:vimcaps_path."/".s:vimcaps_libname.".so"
+    if getftime(s:vimcaps_lib) < getftime(s:vimcaps_src)
+        silent exe "!cd ".s:vimcaps_path." && make"
+    endif
 else
     " vimcaps now do not support your platform, sorry.
     finish
@@ -92,13 +101,34 @@ if !filereadable(s:vimcaps_lib)
     finish
 endif
 
+let libstatus = -1
 try
-    silent call libcallnr(s:vimcaps_lib, "LockToggled", 1)
+    silent let libstatus = libcallnr(s:vimcaps_lib, "LibReady", 0)
 catch /^Vim\%((\a\+)\)\=:E364/
     echohl WarningMsg
     echo "Can not call library function, vimcaps can not load!"
     echohl None
     finish
+finally
+    if libstatus == 1
+        " ready to use.
+    elseif libstatus == 0
+        " Seems that we are under TTY, TODO
+        let s:vimcaps_tty = system("ps -C ps|awk '/ps/{print $2}'")
+        if s:vimcaps_tty =~ 'tty\d'
+            " silent exe '!setleds -L</dev/'.s:vimcaps_tty
+            let s:vimcaps_undertty = 1
+        endif
+        echohl WarningMsg
+        echo "TTY is not yet supported"
+        echohl None
+        finish
+    else
+        echohl WarningMsg
+        echo "Library Error, vimcaps can not load!"
+        echohl None
+        finish
+    endif
 endtry
 
 function s:whichlock( name )
@@ -122,21 +152,16 @@ function s:lockstate( which )
     endif
     if has("win32") || has("win64") || has("win32unix")
         " for windows
-        " The return value specifies the status of the specified virtual key
-        "  If the high-order bit is 1, the key is down; otherwise, it is up.
-        "  If the low-order bit is 1, the key is toggled.
-        "  A key, such as the CAPS LOCK key, is toggled if it is turned on.
-        "  The key is off and untoggled if the low-order bit is 0.
-        "  A toggle key's indicator light (if any) on the keyboard
-        "  will be on when the key is toggled,
-        "  and off when the key is untoggled.              --- MSDN
         let ret = libcallnr(s:vimcaps_lib, "LockToggled", which)
-        let ret = and(ret, 1)
     elseif has("mac") || has("macunix")
         " for mac
         let ret = -1
     elseif has("unix")
-        let ret = -1
+        if s:vimcaps_undertty == 0
+            let ret = libcallnr(s:vimcaps_lib, "LockToggled", which)
+        else
+            " TODO
+        endif
     endif
     return ret
 endfunction
@@ -171,6 +196,22 @@ function s:togglelock( which )
     endif
 endfunction
 
+function s:toggleon( which )
+    let which = s:whichlock(a:which)
+    if which == 0
+        return
+    endif
+    call libcallnr(s:vimcaps_lib, "ToggleOn", which)
+endfunction
+
+function s:toggleoff( which )
+    let which = s:whichlock(a:which)
+    if which == 0
+        return
+    endif
+    call libcallnr(s:vimcaps_lib, "ToggleOff", which)
+endfunction
+
 function vimcaps#toggle()
     " send a `capslock press` keyevent to toggle the status.
     call s:togglelock('capslock')
@@ -192,26 +233,67 @@ function vimcaps#toggleoff()
     endif
 endfunction
 
+function vimcaps#capson()
+    silent call s:toggleon('capslock')
+endfunction
+function vimcaps#capsoff()
+    silent call s:toggleoff('capslock')
+endfunction
+
+function vimcaps#numon()
+    silent call s:toggleon('numlock')
+endfunction
+function vimcaps#numoff()
+    silent call s:toggleoff('numlock')
+endfunction
+
+function vimcaps#scrlon()
+    if has("win32") || has("win64") || has("win32unix")
+        " for windows
+        silent call s:toggleon('scrollock')
+    elseif has("mac") || has("macunix")
+        " for mac
+    elseif has("unix")
+        silent call libcallnr(s:vimcaps_lib, "xNamedIndicatorOn", "Scroll Lock")
+    endif
+endfunction
+function vimcaps#scrloff()
+    if has("win32") || has("win64") || has("win32unix")
+        " for windows
+        silent call s:toggleoff('scrollock')
+    elseif has("mac") || has("macunix")
+        " for mac
+    elseif has("unix")
+        silent call libcallnr(s:vimcaps_lib, "xNamedIndicatorOff", "Scroll Lock")
+    endif
+endfunction
+
 " An example of control the capslock, just for fun.
 function vimcaps#dance( timeout )
-    call vimcaps#toggleoff()
+    call vimcaps#capsoff()
+    call vimcaps#scrloff()
     try
         for time in range(a:timeout)
             sleep 100m
-            silent call vimcaps#toggle()   " on
+            silent call vimcaps#capson()    " on
+            silent call vimcaps#scrlon()    " on
             sleep 200m
-            silent call vimcaps#toggle()   " off
+            silent call vimcaps#capsoff()   " off
+            silent call vimcaps#scrloff()   " off
             sleep 100m
-            silent call vimcaps#toggle()   " on
+            silent call vimcaps#capson()    " on
+            silent call vimcaps#scrlon()    " on
             sleep 200m
-            silent call vimcaps#toggle()   " off
+            silent call vimcaps#capsoff()   " off
+            silent call vimcaps#scrloff()   " off
             sleep 400m
         endfor
     catch /^Vim:Interrupt$/
         echo "Interrupt"
     finally
         " clean up, turn off capslock
-        call vimcaps#toggleoff()
+        call vimcaps#capsoff()
+        call vimcaps#scrloff()
     endtry
 endfunction
 
@@ -261,6 +343,6 @@ endfunction
 " to your vimrc, or just uninstall this plugin. :)
 augroup vimcaps
     au!
-    autocmd BufWinEnter,InsertLeave,FocusGained * call vimcaps#toggleoff()
+    autocmd BufWinEnter,InsertLeave,FocusGained * call vimcaps#capsoff()
 augroup END
 
